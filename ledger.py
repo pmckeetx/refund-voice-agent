@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS refunds (
     status       TEXT NOT NULL DEFAULT 'pending', -- pending until the payment provider settles it
     session_id   TEXT NOT NULL,                   -- the call that asked first
     call_ids     TEXT NOT NULL,                   -- every tool call that asked for it, as a JSON list
-    told         INTEGER NOT NULL DEFAULT 0       -- did a confirmation of this row play to the end?
+    told         INTEGER NOT NULL DEFAULT 0       -- has the caller heard a reply that names its card?
 )
 """
 
