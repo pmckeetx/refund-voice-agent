@@ -1,7 +1,7 @@
 [project]
 name = "refund-voice-agent"
 version = "0.1.0"
-description = "A refund desk voice agent on PolyAI's Dialog-RSN-1 whose refunds are keyed on the order in SQLite, so a backchannel, a TV or a change of mind can't pay out twice"
+description = "A refund desk voice agent on PolyAI's Dialog-RSN-1 with a SQLite ledger keyed on the order, which pays each order once and makes sure the caller hears it went through"
 readme = "README.md"
 authors = [
     { name = "Peter McKee", email = "peter.mckee@gmail.com" }

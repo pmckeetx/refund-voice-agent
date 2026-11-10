@@ -1,11 +1,12 @@
 # Refund voice agent
 
-A Python voice agent on PolyAI's Dialog-RSN-1 that issues refunds without paying out twice. Every refund goes through
-a SQLite ledger keyed on the order, so a reissued tool call is the same refund, a change of card changes the refund
-instead of adding one, and a confirmation the caller talked over is repeated from what the ledger says. The tests pass
-only when the ledger matches what the caller heard.
+A Python voice agent on PolyAI's Dialog-RSN-1 that issues refunds and makes sure the caller hears they went through.
+Every refund goes through a SQLite ledger keyed on the order, so a repeated tool call is the same refund and a change
+of card changes the refund instead of adding one. The agent asks for a confirmation whenever none has started since the
+refund came back, even if the caller asked "did that go through?" first, and repeats a confirmation the caller talked
+over. The tests pass only when the ledger matches what the caller heard.
 
-The walkthrough is the post: [Stop your voice agent refunding twice when a caller says mm-hmm](https://www.petermckee.dev/blog/stop-your-voice-agent-refunding-twice-when-a-caller-says-mm).
+The walkthrough is the post: [Stop your voice agent going quiet after it refunds a caller](https://www.petermckee.dev/blog/stop-your-voice-agent-going-quiet-after-it-refunds-a-caller).
 
 ## What's here
 
