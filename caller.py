@@ -48,7 +48,7 @@ class CallKeyedLedger(Ledger):
     schema = """CREATE TABLE IF NOT EXISTS refunds (
         refund_id TEXT PRIMARY KEY, order_id TEXT NOT NULL, amount_cents INTEGER NOT NULL, card_last4 TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'pending', session_id TEXT NOT NULL, call_ids TEXT NOT NULL,
-        told INTEGER NOT NULL DEFAULT 0)"""
+        accepted INTEGER NOT NULL DEFAULT 0, told INTEGER NOT NULL DEFAULT 0)"""
 
     def refund(self, order_id, card_last4, session_id, call_id):
         from ledger import ORDERS
@@ -64,6 +64,9 @@ class CallKeyedLedger(Ledger):
 
     def mark_told(self, order_id):
         self.db.execute("UPDATE refunds SET told = 1 WHERE order_id = ?", (order_id,))
+
+    def mark_accepted(self, order_id):
+        self.db.execute("UPDATE refunds SET accepted = 1 WHERE order_id = ?", (order_id,))
 
 
 class Before(RefundDesk):

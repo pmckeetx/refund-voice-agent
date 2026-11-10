@@ -96,6 +96,30 @@ async def test_a_tool_that_throws_still_answers_the_call(monkeypatch, tmp_path):
         await ws.close()
 
 
+async def test_a_repeat_after_the_provider_failed_submits_again(monkeypatch, tmp_path):
+    keys = []
+
+    async def flaky_provider(row):
+        keys.append(agent.provider_key(row))
+        if len(keys) == 1:
+            raise ConnectionError("payment provider unreachable")
+
+    monkeypatch.setattr(agent, "submit_refund", flaky_provider)
+    async with FakeRealtime([]) as fake:
+        ws, desk, listener = await open_desk(fake, monkeypatch, tmp_path)
+        with pytest.raises(ConnectionError):
+            await desk.issue_refund({"order_id": "4417", "card_last4": "4242"}, "call_1")
+        assert desk.ledger.row("4417")["accepted"] == 0  # recorded, but the provider never took it
+        result = await desk.issue_refund({"order_id": "4417", "card_last4": "4242"}, "call_2")
+        assert result["status"] == "already_refunded"
+        assert keys == ["R-4417-4242", "R-4417-4242"]  # submitted again, under the same provider key
+        assert desk.ledger.row("4417")["accepted"] == 1
+        changed = await desk.issue_refund({"order_id": "4417", "card_last4": "8812"}, "call_3")
+        assert changed["status"] == "card_changed" and keys[-1] == "R-4417-8812"  # a new card, a new key
+        listener.cancel()
+        await ws.close()
+
+
 async def test_refused_session_update_raises(monkeypatch):
     class Refuses(FakeRealtime):
         async def handler(self, ws):

@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS refunds (
     status       TEXT NOT NULL DEFAULT 'pending', -- pending until the payment provider settles it
     session_id   TEXT NOT NULL,                   -- the call that asked first
     call_ids     TEXT NOT NULL,                   -- every tool call that asked for it, as a JSON list
+    accepted     INTEGER NOT NULL DEFAULT 0,      -- has the payment provider accepted it, to this card?
     told         INTEGER NOT NULL DEFAULT 0       -- has the caller heard a reply that names its card?
 )
 """
@@ -57,7 +58,8 @@ class Ledger:
                 if row["card_last4"] == card_last4:
                     outcome = "already_refunded"
                 elif row["status"] == "pending":
-                    self.db.execute("UPDATE refunds SET card_last4 = ?, told = 0 WHERE order_id = ?", (card_last4, order_id))
+                    self.db.execute("UPDATE refunds SET card_last4 = ?, accepted = 0, told = 0 WHERE order_id = ?",
+                                    (card_last4, order_id))
                     outcome = "card_changed"
                 else:
                     outcome = "settled"  # the money has gone: moving it is a new refund and a reversal, not an update
@@ -67,11 +69,14 @@ class Ledger:
             raise
         return outcome, self.row(order_id)
 
+    def mark_accepted(self, order_id: str):
+        self.db.execute("UPDATE refunds SET accepted = 1 WHERE order_id = ?", (order_id,))
+
     def mark_told(self, order_id: str):
         self.db.execute("UPDATE refunds SET told = 1 WHERE order_id = ?", (order_id,))
 
     def settle(self, order_id: str):
-        self.db.execute("UPDATE refunds SET status = 'settled' WHERE order_id = ?", (order_id,))
+        self.db.execute("UPDATE refunds SET status = 'settled', accepted = 1 WHERE order_id = ?", (order_id,))
 
     def row(self, order_id: str) -> dict | None:
         row = self.db.execute("SELECT * FROM refunds WHERE order_id = ?", (order_id,)).fetchone()

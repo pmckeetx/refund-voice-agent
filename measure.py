@@ -12,6 +12,7 @@ ledger matches what the caller heard.
 import argparse
 import asyncio
 import json
+import statistics
 import os
 import tempfile
 from collections import Counter
@@ -21,6 +22,16 @@ import websockets
 
 from caller import SCRIPTS, CallKeyedLedger, run
 from ledger import Ledger, mismatches
+
+
+def cut_after(events: list[dict]) -> float | None:
+    """Seconds from the caller's second line starting to the reply it cancelled, on this client's clock."""
+    says = [e["t"] for e in events if e["type"] == "room.caller_says"]
+    if len(says) < 2:
+        return None
+    cancel = next((e["t"] for e in events if e["t"] >= says[1] and e["type"] == "response.done"
+                   and e["response"]["status"] == "cancelled"), None)
+    return round(cancel - says[1], 2) if cancel is not None else None
 
 
 def summarise(room, ledger) -> dict:
@@ -36,6 +47,7 @@ def summarise(room, ledger) -> dict:
     return {
         "speech_started": count("input_audio_buffer.speech_started"),
         "speech_stopped": count("input_audio_buffer.speech_stopped"),
+        "cut_after_s": cut_after(room.events),
         "caller_turns": [text for _, who, text in room.desk.lines if who == "Caller"],
         "cancelled": cancelled,
         "calls": [f"{c.get('order_id')}/{c.get('card_last4')}" for c in calls],
@@ -73,7 +85,7 @@ async def main():
 
     host = os.environ.get("DIALOG_REALTIME_URL", "wss://api.studio.poly.ai/v1/realtime").split("/")[2]
     print(f"{args.script}, {args.runs} runs on {host}{', before' if args.before else ''}", flush=True)
-    totals = Counter()
+    totals, cuts = Counter(), []
     for i in range(args.runs):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = (CallKeyedLedger if args.before else Ledger)(Path(tmp) / "refunds.db")
@@ -88,8 +100,13 @@ async def main():
         totals["caller never told"] += any("never heard" in m for m in s["mismatches"])
         totals["any mismatch"] += bool(s["mismatches"])
         totals["more than one call"] += len(s["calls"]) > 1
+        if s["cut_after_s"] is not None:
+            cuts.append(s["cut_after_s"])
     print(f"{args.runs} runs: " + ", ".join(f"{k} {totals[k]}" for k in
           ("more than one call", "refunded twice", "no refund", "caller never told", "any mismatch")))
+    if cuts:
+        print(f"reply cut a median {statistics.median(cuts):.2f} s after the caller started "
+              f"({min(cuts):.2f} to {max(cuts):.2f}, {len(cuts)} runs)")
 
 
 if __name__ == "__main__":

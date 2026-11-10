@@ -19,10 +19,16 @@ pytestmark = [
 
 @pytest.mark.parametrize("script", ["mm-hmm", "did-it-go-through", "missed-confirmation"])
 async def test_one_refund_and_the_caller_heard_it(script, tmp_path):
+    import websockets
+
+    from agent import refused
     from caller import run
 
     ledger = Ledger(tmp_path / "refunds.db")
-    room = await run(script, ledger=ledger)
+    try:
+        room = await run(script, ledger=ledger)
+    except websockets.InvalidStatus as error:
+        pytest.fail(refused(error), pytrace=False)
     rows = ledger.rows()
 
     assert [e for e in room.events if e["type"] == "response.function_call_arguments.done"], "the model never called issue_refund"

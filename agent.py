@@ -54,8 +54,14 @@ TOOLS = [{
 }]
 
 
+def provider_key(row: dict) -> str:
+    """The idempotency key the payment provider gets: one per refund and card, so a repeat is deduplicated by the
+    provider too, and a change of card is a new request instead of a reused key with different parameters."""
+    return f"{row['refund_id']}-{row['card_last4']}"
+
+
 async def submit_refund(row: dict):
-    """The payment provider. It takes a few seconds, and it would be given row['refund_id'] as its idempotency key."""
+    """The payment provider: a stand-in that takes a few seconds. A real one gets provider_key(row) as its key."""
     await asyncio.sleep(PROVIDER_SECONDS)
 
 
@@ -113,7 +119,7 @@ class RefundDesk(BargeInClient):
             "item": {"type": "function_call_output", "call_id": call["call_id"], "output": json.dumps(result)},
         })
         if result.get("refund_id"):
-            self.owed[result["order_id"]] = since
+            self.owed.setdefault(result["order_id"], since)  # from the first result the caller hasn't heard
             self.reminded.pop(result["order_id"], None)
         await self.ask_for_reply(since)
 
@@ -132,8 +138,9 @@ class RefundDesk(BargeInClient):
             return {"status": "error", "note": f"The caller has no card ending {card}. Ask which card they want."}
         outcome, row = self.ledger.refund(order_id, card, self.session_id, call_id)
         self.log("", f"(issue_refund {order_id} to {card}: {outcome})")
-        if outcome in ("refunded", "card_changed"):
+        if not row["accepted"]:  # new, a new card, or a repeat of one the provider never accepted
             await submit_refund(row)
+            self.ledger.mark_accepted(order_id)
         return {"status": outcome, "order_id": order_id, "refund_id": row["refund_id"], "note": self.note_for(outcome, row)}
 
     def note_for(self, outcome: str, row: dict) -> str:
