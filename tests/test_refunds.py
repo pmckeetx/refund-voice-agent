@@ -101,6 +101,39 @@ async def test_a_missed_confirmation_is_repeated_from_the_ledger(monkeypatch, tm
     assert_ledger_matches_heard(room, ledger)
 
 
+STILL_PROCESSING = "It's still processing. I'll let you know as soon as it goes through."
+
+
+async def test_a_turn_answered_before_the_result_still_gets_the_confirmation(monkeypatch, tmp_path):
+    steps = [("tool", "issue_refund", VISA, LINE, 2000), ("say", STILL_PROCESSING, 2500), ("say", DONE, 2500)]
+    async with FakeRealtime(steps) as fake:
+        room, ledger = await call(fake, monkeypatch, tmp_path, "did-it-go-through")
+    assert room.heard() == [STILL_PROCESSING, DONE]
+    assert_ledger_matches_heard(room, ledger)
+
+
+async def test_the_usual_guard_never_says_it_went_through(monkeypatch, tmp_path):
+    steps = [("tool", "issue_refund", VISA, LINE, 2000), ("say", STILL_PROCESSING, 2500), ("say", DONE, 2500)]
+    async with FakeRealtime(steps) as fake:
+        room, ledger = await call(fake, monkeypatch, tmp_path, "did-it-go-through", before=True)
+    assert fake.sent("response.create") == []
+    assert room.heard() == [STILL_PROCESSING]
+    assert mismatches(ledger.rows(), room.heard()) == [
+        "R-call_1 is in the ledger, but the caller never heard it was done"]
+
+
+async def test_a_reminder_the_model_ignores_is_sent_again(monkeypatch, tmp_path):
+    steps = [("tool", "issue_refund", VISA, LINE, 2000), ("say", DONE, 3000),
+             ("say", "I don't have information about that.", 2000),
+             ("say", "And to confirm, your 32 dollars is back on your Visa ending 4242.", 2500)]
+    async with FakeRealtime(steps) as fake:
+        room, ledger = await call(fake, monkeypatch, tmp_path, "missed-confirmation")
+    notes = [e for e in fake.received if e["type"] == "conversation.item.create" and e["item"].get("role") == "system"]
+    assert len(notes) == 2
+    assert room.heard()[-1].startswith("And to confirm")
+    assert_ledger_matches_heard(room, ledger)
+
+
 async def test_measure_counts_what_happened_on_a_call(monkeypatch, tmp_path):
     from measure import summarise
 

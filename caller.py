@@ -22,7 +22,6 @@ import websockets
 
 from agent import RefundDesk, connect, refused
 from audio import RATE, Speaker
-from barge_in import BargeInClient
 from ledger import Ledger
 
 SAMPLES = Path(__file__).parent / "samples"
@@ -67,14 +66,29 @@ class CallKeyedLedger(Ledger):
 
 
 class Before(RefundDesk):
-    """A refund desk without the fixes: a row per tool call, the caller's turns counted on speech_started, no reminder."""
+    """A refund desk without the fixes: a row per tool call, no reminder, and the usual guard on response.create.
+
+    The guard skips the reply when the caller has started talking since the call, so that a slow tool's result
+    isn't read out over their next question.
+    """
+
+    caller_turns = 0
 
     async def handle(self, event: dict):
         if event["type"] == "input_audio_buffer.speech_started":
-            self.caller_turns += 1  # any sound at all counts as the caller moving on
-        elif event["type"] == "input_audio_buffer.speech_stopped":
-            return await BargeInClient.handle(self, event)
+            self.caller_turns += 1
         await super().handle(event)
+
+    async def run_tool(self, call: dict):
+        turns_before = self.caller_turns
+        result = await self.issue_refund(json.loads(call["arguments"]), call["call_id"])
+        self.owed[result["order_id"]] = self.responses  # bookkeeping for mismatches(), not a fix
+        await self.send({"type": "conversation.item.create",
+                         "item": {"type": "function_call_output", "call_id": call["call_id"], "output": json.dumps(result)}})
+        while self.responding:
+            await asyncio.sleep(0.05)
+        if self.caller_turns == turns_before:
+            await self.send({"type": "response.create"})
 
     async def remind(self, row: dict):
         pass
@@ -157,6 +171,7 @@ class Room:
                 self.last_heard = self.now()
                 if playing and playing not in self.started:
                     self.started[playing] = self.now()
+                    self.note("room", {"type": "room.audible", "item_id": playing, "kind": self.kind.get(playing, "reply")})
             said, self.voice[:] = bytes(self.voice[:CHUNK]).ljust(CHUNK, b"\0"), self.voice[CHUNK:]
             await self.desk.send_audio(said)
             both = played.astype(np.float32) + np.frombuffer(said, dtype=np.int16)
@@ -166,6 +181,7 @@ class Room:
 
     def say(self, name: str):
         self.desk.log("", f"(caller says {name}.wav)")
+        self.note("room", {"type": "room.caller_says", "line": name})
         self.voice.extend(read(name))
 
     async def until(self, condition, timeout=30.0):

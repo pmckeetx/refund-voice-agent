@@ -17,6 +17,8 @@ import tempfile
 from collections import Counter
 from pathlib import Path
 
+import websockets
+
 from caller import SCRIPTS, CallKeyedLedger, run
 from ledger import Ledger, mismatches
 
@@ -48,6 +50,18 @@ def summarise(room, ledger) -> dict:
     }
 
 
+async def run_with_retry(script, before, ledger, audit, tries=10):
+    """HTTP 429 means the account is at its concurrent session cap: wait for a session to close and try again."""
+    for attempt in range(tries):
+        try:
+            return await run(script, before, ledger, audit=audit)
+        except websockets.InvalidStatus as error:
+            if error.response.status_code != 429 or attempt == tries - 1:
+                raise
+            print("(HTTP 429: at the session limit, retrying in 20 s)", flush=True)
+            await asyncio.sleep(20)
+
+
 async def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--script", choices=SCRIPTS, default="mm-hmm")
@@ -63,7 +77,7 @@ async def main():
     for i in range(args.runs):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = (CallKeyedLedger if args.before else Ledger)(Path(tmp) / "refunds.db")
-            room = await run(args.script, args.before, ledger, audit=args.audit)
+            room = await run_with_retry(args.script, args.before, ledger, args.audit)
             s = summarise(room, ledger)
         print(f"RUN {i + 1}: {json.dumps(s)}", flush=True)
         if args.log:

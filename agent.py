@@ -64,12 +64,11 @@ class RefundDesk(BargeInClient):
         super().__init__(ws, speaker, echo)
         self.ledger = ledger or Ledger()
         self.session_id = "unknown"
-        self.caller_turns = 0  # turns Dialog-RSN-1 confirmed: bumped on speech_stopped, not speech_started
         self.responses = 0  # response.created events so far
         self.response_of: dict[str, int] = {}  # item_id -> which response it came in
         self.with_calls: set[int] = set()  # responses that made a tool call: their message is the holding line
         self.owed: dict[str, int] = {}  # order_id -> responses seen when its result went into history
-        self.reminded: set[str] = set()
+        self.reminded: dict[str, int] = {}  # order_id -> reminders sent since its last result
 
     async def start(self):
         created = json.loads(await self.ws.recv())
@@ -89,8 +88,6 @@ class RefundDesk(BargeInClient):
 
     async def handle(self, event: dict):
         match event["type"]:
-            case "input_audio_buffer.speech_stopped":
-                self.caller_turns += 1  # a sound judged to be noise sends speech_started and never gets here
             case "response.created":
                 self.responses += 1
             case "response.output_audio.delta":
@@ -104,25 +101,28 @@ class RefundDesk(BargeInClient):
         await super().handle(event)
 
     async def run_tool(self, call: dict):
-        turns_before = self.caller_turns
         try:
             result = await self.issue_refund(json.loads(call["arguments"]), call["call_id"])
         except Exception as error:  # every call gets an output, or the model waits for it forever
             self.log("", f"(issue_refund failed: {error})")
             result = {"status": "error", "note": "The refund system failed, so the refund isn't confirmed. Don't call "
                       "issue_refund again. Tell the caller the team will email them once it's sorted."}
+        since = self.responses
         await self.send({
             "type": "conversation.item.create",
             "item": {"type": "function_call_output", "call_id": call["call_id"], "output": json.dumps(result)},
         })
         if result.get("refund_id"):
-            self.owed[result["order_id"]] = self.responses
-            self.reminded.discard(result["order_id"])
-        while self.responding:  # one response at a time: let the holding line finish
+            self.owed[result["order_id"]] = since
+            self.reminded.pop(result["order_id"], None)
+        await self.ask_for_reply(since)
+
+    async def ask_for_reply(self, since: int):
+        """Ask the model to speak about the result, unless a reply has already started since it went into history."""
+        while self.responding:  # one response at a time: let the holding line, or the answer to the caller, finish
             await asyncio.sleep(0.05)
-        if self.caller_turns == turns_before:
-            await self.send({"type": "response.create"})  # no new turn while it ran: confirm it now
-        # Otherwise the caller's turn is being answered. If that reply doesn't tell them, heard() will remind the model.
+        if self.responses == since:
+            await self.send({"type": "response.create"})  # sent while the caller talks, it's held for their turn
 
     async def issue_refund(self, args: dict, call_id: str) -> dict:
         order_id, card = str(args.get("order_id", "")).strip(), str(args.get("card_last4", "")).strip()
@@ -157,17 +157,19 @@ class RefundDesk(BargeInClient):
             if mentions(text, row["card_last4"]):
                 self.ledger.mark_told(order_id)
                 del self.owed[order_id]
-            elif order_id not in self.reminded:
-                await self.remind(row)
+            elif self.reminded.get(order_id, 0) < 2:  # twice at most, so a model that won't say it can't loop
+                self.spawn(self.remind(row))
 
     async def remind(self, row: dict):
-        """The refund is real, but the caller didn't hear it. Put the ledger's word in history before the next reply."""
-        self.reminded.add(row["order_id"])
-        note = (f"The caller hasn't heard that refund {row['refund_id']}, {describe(row)}, is done. "
-                "Tell them first, then answer what they asked.")
+        """The refund is real, but the caller didn't hear it. Put the ledger's word in history and ask for a reply."""
+        self.reminded[row["order_id"]] = self.reminded.get(row["order_id"], 0) + 1
+        note = (f"Refund {row['refund_id']} is done: {describe(row)}. The caller hasn't heard that yet. In your next "
+                "reply, tell them it's done, with the amount and the card's last four digits.")
         self.log("", f"(reminder: {row['refund_id']} not heard yet)")
+        since = self.responses
         await self.send({"type": "conversation.item.create",
                          "item": {"type": "message", "role": "system", "content": [{"type": "input_text", "text": note}]}})
+        await self.ask_for_reply(since)
 
 
 def connect():
