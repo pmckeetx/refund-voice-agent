@@ -47,7 +47,7 @@ async def test_a_reissued_call_is_the_same_refund(monkeypatch, tmp_path):
         room, ledger = await call(fake, monkeypatch, tmp_path, "did-it-go-through")
     outputs = [json.loads(e["item"]["output"]) for e in fake.sent("conversation.item.create")
                if e["item"]["type"] == "function_call_output"]
-    assert sorted(o["status"] for o in outputs) == ["already_refunded", "refunded"]  # the repeat answers first
+    assert sorted(o["status"] for o in outputs) == ["already_refunded", "refunded"]  # one refund, and one repeat
     assert len(ledger.rows()) == 1
     assert_ledger_matches_heard(room, ledger)
 
