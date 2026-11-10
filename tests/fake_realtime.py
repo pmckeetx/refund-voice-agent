@@ -3,15 +3,15 @@
 Its clock is the caller's audio: every input_audio_buffer.append moves it on by the length of the chunk, and reply
 audio streams out at the same pace, the way the real server sends it at speaking speed. So a test that runs the room
 ten times faster than real time sees events in the same order a real call would. What it copies from the real server
-(the API reference and overview, read 6 November 2026, and probes on api.studio.poly.ai, October 2026):
+(the API reference and overview, read 6 November 2026, and probes on api.studio.poly.ai, October and 10 November 2026):
 
 - A tool call's response sends response.function_call_arguments.done first, then streams the poly_spoken line. A
   barge-in cancels that response, line and all, but the call has already been made.
 - While a reply is audible, a sound only becomes a turn once it's confirmed (here: 600 ms of caller audio). A shorter
-  one, like a backchannel, is ignored and the reply plays on. A barge-in's cancelled response.done arrives before
-  its speech_started.
-- While the agent is quiet, speech_started is sent at the onset. A sound later judged to be noise (here: under
-  600 ms) is dropped, so that speech_started never gets a speech_stopped.
+  one, like "mm-hmm", is ignored and the reply plays on (10 of 10 runs over the holding line, 10 of 10 over the
+  confirmation). A barge-in's cancelled response.done arrives before its speech_started.
+- While the agent is quiet, speech_started is sent at the onset, and "mm-hmm" is a turn like any other (5 of 5). The
+  docs say a sound later judged to be noise is dropped, with no speech_stopped; here that's anything under 200 ms.
 - response.create while a response is being written is refused with conversation_already_has_active_response. One
   sent while a reply is only playing is answered when its audio ends, and one sent while the caller is talking is
   held and answered by the response to their turn.
@@ -27,7 +27,8 @@ import websockets
 LOUD = 1000
 BYTES_PER_MS = 48
 END_OF_TURN_MS = 500  # quiet after speech before the turn ends (prod: about 560 ms)
-CONFIRM_MS = 600  # caller audio it takes to count as a turn, not a backchannel or noise
+CONFIRM_MS = 600  # caller audio it takes to talk over a reply that's playing
+NOISE_MS = 200  # while the agent is quiet, anything shorter is dropped as noise
 DELTA_MS = 100
 
 
@@ -136,7 +137,7 @@ class FakeRealtime:
             elif s["loud_ms"]:
                 s["quiet_ms"] += ms
                 if s["quiet_ms"] >= END_OF_TURN_MS:
-                    real = s["loud_ms"] >= CONFIRM_MS
+                    real = s["loud_ms"] >= NOISE_MS
                     was_speaking, s["loud_ms"], s["quiet_ms"], s["speaking"] = s["speaking"], 0, 0, False
                     if real and was_speaking:
                         await turn_ends()

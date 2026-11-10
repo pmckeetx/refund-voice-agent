@@ -38,7 +38,7 @@ uv run caller.py --script mm-hmm-gap           # "Mm-hmm." after the line, while
 uv run caller.py --script wrong-card           # "Wait, wrong card" over the holding line
 uv run caller.py --script did-it-go-through    # "Sorry, did that go through?" over the holding line
 uv run caller.py --script missed-confirmation  # the caller talks over the confirmation
-uv run caller.py --script mm-hmm-gap --before  # a client keyed on call_id, counting turns on speech_started
+uv run caller.py --script did-it-go-through --before  # keyed on call_id, with the usual reply guard
 uv run measure.py --script mm-hmm --runs 5     # repeat a script and count refunds, confirmations and mismatches
 uv run ledger.py --show                        # print the ledger
 uv run agent.py                                # talk to it yourself, with headphones on
@@ -55,7 +55,7 @@ A variable set in your shell beats `.env`. If the server refuses the connection 
 
 ```bash
 uv run pytest                           # offline: a fake realtime server and a temp ledger, no key needed
-POLYAI_LIVE=1 uv run pytest -m live     # two scripted calls against the real API
+POLYAI_LIVE=1 uv run pytest -m live     # three scripted calls against the real API
 ```
 
 ## License

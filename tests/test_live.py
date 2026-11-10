@@ -17,7 +17,7 @@ pytestmark = [
 ]
 
 
-@pytest.mark.parametrize("script", ["mm-hmm", "missed-confirmation"])
+@pytest.mark.parametrize("script", ["mm-hmm", "did-it-go-through", "missed-confirmation"])
 async def test_one_refund_and_the_caller_heard_it(script, tmp_path):
     from caller import run
 

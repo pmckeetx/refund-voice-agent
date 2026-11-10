@@ -2,7 +2,7 @@
 
     uv run measure.py --script mm-hmm --runs 5                  # refunds per order, confirmations heard, mismatches
     uv run measure.py --script did-it-go-through --audit        # also ask the server for every tool call afterwards
-    uv run measure.py --script mm-hmm-gap --before              # the client keyed on call_id, with the old guard
+    uv run measure.py --script did-it-go-through --before       # the client keyed on call_id, with the usual guard
     uv run measure.py --script tv --runs 10 --log runs/tv       # keep every event of every run as JSON lines
 
 For each run it prints what the turn detector did (speech_started, speech_stopped, which replies were cancelled),
@@ -66,7 +66,7 @@ async def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--script", choices=SCRIPTS, default="mm-hmm")
     parser.add_argument("--runs", type=int, default=5)
-    parser.add_argument("--before", action="store_true", help="a row per tool call, and turns counted on speech_started")
+    parser.add_argument("--before", action="store_true", help="a row per tool call, and the usual guard on asking for a reply")
     parser.add_argument("--audit", action="store_true", help="after each call, retrieve every tool call from history")
     parser.add_argument("--log", help="a folder to write each run's events to, as JSON lines")
     args = parser.parse_args()

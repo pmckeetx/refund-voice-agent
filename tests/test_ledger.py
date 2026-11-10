@@ -75,7 +75,7 @@ def test_mismatches_catches_each_way_the_ledger_and_the_caller_disagree():
     row = {"order_id": "4417", "refund_id": "R-4417", "card_last4": "8812", "told": 1}
     confirmed = "Done, 32 dollars back to your Mastercard ending 8812."
     assert mismatches([row], [confirmed]) == []
-    assert mismatches([row, {**row, "refund_id": "R-call_2"}], [confirmed]) == ["order 4417 refunded 2 times"]
+    assert mismatches([row, {**row, "refund_id": "R-4417-2"}], [confirmed]) == ["order 4417 refunded 2 times"]
     assert mismatches([row], ["Let me process-"]) == ["R-4417 is in the ledger, but the caller never heard it was done"]
     assert mismatches([{**row, "told": 0}], [confirmed]) == ["R-4417 was heard, but the ledger says it wasn't"]
     stale = "That's 32 dollars to your Visa ending 4242."

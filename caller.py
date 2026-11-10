@@ -8,7 +8,7 @@ simulated room at real time. At the end it prints the ledger.
     uv run caller.py --script wrong-card           # "Wait, wrong card" over the holding line
     uv run caller.py --script missed-confirmation  # the caller talks over the confirmation
     uv run caller.py --script did-it-go-through    # "Sorry, did that go through?" over the holding line
-    uv run caller.py --script mm-hmm-gap --before  # the same call on a client keyed on call_id, with the old guard
+    uv run caller.py --script did-it-go-through --before  # keyed on call_id, with the usual reply guard
 """
 import argparse
 import asyncio
@@ -52,10 +52,11 @@ class CallKeyedLedger(Ledger):
 
     def refund(self, order_id, card_last4, session_id, call_id):
         from ledger import ORDERS
+        refund_id = f"R-{order_id}-{len(self.rows()) + 1}"  # every call is a new refund
         self.db.execute("INSERT INTO refunds (refund_id, order_id, amount_cents, card_last4, session_id, call_ids) "
-                        "VALUES (?, ?, ?, ?, ?, ?)", (f"R-{call_id}", order_id, ORDERS[order_id]["amount_cents"],
+                        "VALUES (?, ?, ?, ?, ?, ?)", (refund_id, order_id, ORDERS[order_id]["amount_cents"],
                                                       card_last4, session_id, json.dumps([call_id])))
-        return "refunded", dict(self.db.execute("SELECT * FROM refunds WHERE refund_id = ?", (f"R-{call_id}",)).fetchone())
+        return "refunded", dict(self.db.execute("SELECT * FROM refunds WHERE refund_id = ?", (refund_id,)).fetchone())
 
     def row(self, order_id):
         rows = [r for r in self.rows() if r["order_id"] == order_id]
@@ -250,7 +251,7 @@ async def run(script: str, before: bool = False, ledger: Ledger | None = None, s
 async def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--script", choices=SCRIPTS, default="mm-hmm")
-    parser.add_argument("--before", action="store_true", help="a row per tool call, and turns counted on speech_started")
+    parser.add_argument("--before", action="store_true", help="a row per tool call, and the usual guard on asking for a reply")
     parser.add_argument("--keep", action="store_true", help="keep the ledger from earlier calls instead of starting empty")
     parser.add_argument("--log", help="write every event, both ways, to this JSON lines file")
     parser.add_argument("--save", help="write the call as the room heard it, both voices, to this WAV")

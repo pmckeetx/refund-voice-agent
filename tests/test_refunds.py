@@ -40,24 +40,6 @@ async def test_mm_hmm_over_the_holding_line_changes_nothing(monkeypatch, tmp_pat
     assert_ledger_matches_heard(room, ledger)
 
 
-async def test_a_dropped_mm_hmm_still_gets_the_confirmation(monkeypatch, tmp_path):
-    async with FakeRealtime([("tool", "issue_refund", VISA, LINE, 2000), ("say", DONE, 2500)]) as fake:
-        room, ledger = await call(fake, monkeypatch, tmp_path, "mm-hmm-gap")
-    starts = [e for e in room.events if e["type"] == "input_audio_buffer.speech_started"]
-    stops = [e for e in room.events if e["type"] == "input_audio_buffer.speech_stopped"]
-    assert (len(starts), len(stops)) == (2, 1)  # the mm-hmm started a turn that never ended
-    assert len(fake.sent("response.create")) == 1
-    assert_ledger_matches_heard(room, ledger)
-
-
-async def test_the_old_guard_leaves_the_caller_in_silence(monkeypatch, tmp_path):
-    async with FakeRealtime([("tool", "issue_refund", VISA, LINE, 2000), ("say", DONE, 2500)]) as fake:
-        room, ledger = await call(fake, monkeypatch, tmp_path, "mm-hmm-gap", before=True)
-    assert fake.sent("response.create") == []
-    assert mismatches(ledger.rows(), room.heard()) == [
-        "R-call_1 is in the ledger, but the caller never heard it was done"]
-
-
 async def test_a_reissued_call_is_the_same_refund(monkeypatch, tmp_path):
     steps = [("tool", "issue_refund", VISA, LINE, 2000), ("tool", "issue_refund", VISA, "Let me check on that.", 1500),
              ("say", DONE, 2500)]
@@ -119,7 +101,7 @@ async def test_the_usual_guard_never_says_it_went_through(monkeypatch, tmp_path)
     assert fake.sent("response.create") == []
     assert room.heard() == [STILL_PROCESSING]
     assert mismatches(ledger.rows(), room.heard()) == [
-        "R-call_1 is in the ledger, but the caller never heard it was done"]
+        "R-4417-1 is in the ledger, but the caller never heard it was done"]
 
 
 async def test_a_reminder_the_model_ignores_is_sent_again(monkeypatch, tmp_path):
@@ -138,8 +120,8 @@ async def test_measure_counts_what_happened_on_a_call(monkeypatch, tmp_path):
     from measure import summarise
 
     async with FakeRealtime([("tool", "issue_refund", VISA, LINE, 2000), ("say", DONE, 2500)]) as fake:
-        room, ledger = await call(fake, monkeypatch, tmp_path, "mm-hmm-gap")
+        room, ledger = await call(fake, monkeypatch, tmp_path, "mm-hmm")
         s = summarise(room, ledger)
-    assert (s["speech_started"], s["speech_stopped"], s["cancelled"]) == (2, 1, [])
+    assert (s["speech_started"], s["speech_stopped"], s["cancelled"]) == (1, 1, [])
     assert (s["calls"], s["outcomes"], s["response_create"]) == (["4417/4242"], ["refunded"], 1)
     assert (s["rows"], s["mismatches"]) == ([("4417", "4242", "told")], [])
