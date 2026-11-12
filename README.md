@@ -6,7 +6,7 @@ of card changes the refund instead of adding one. The agent asks for a confirmat
 refund came back, even if the caller asked "did that go through?" first, and repeats a confirmation the caller talked
 over. The tests pass only when the ledger matches what the caller heard.
 
-The walkthrough is the post: [Stop your voice agent going quiet after it refunds a caller](https://www.petermckee.dev/blog/stop-your-voice-agent-going-quiet-after-it-refunds-a-caller).
+The walkthrough is the post: [Stop your voice agent going quiet after it refunds a caller](https://dev.to/pmckeetx/stop-your-voice-agent-going-quiet-after-it-refunds-a-caller-1c1e).
 
 ## What's here
 
